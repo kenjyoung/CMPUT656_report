@@ -43,6 +43,57 @@ The agent starts with no knowledge of the semantic interpretation of the state r
 \end{figure}
 
 \section*{Results}
+\begin{figure}[!ht]
+\centering
+\begin{subfigure}[t]{.45\textwidth}
+  \centering
+      \includegraphics[width=1\textwidth]{images/1_query_mem_ret.png}
+  \caption{Returns over time for 1 query architecture. y-axis is return, x-axis is number of training episodes.}
+  \label{fig:1_query_ret}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{.45\textwidth}
+  \centering
+      \includegraphics[width=1\textwidth]{images/1_query_mem_writes.png}
+  \caption{Write weight for informant state (blue) and average write weight for all other states (green). y-axis is write weight, x-axis is number of training episodes.}
+  \label{fig:1_query_write}
+\end{subfigure}
+\caption{Results for architecture with 1 query}
+\label{fig:1_query}
+\end{figure}
+
+\begin{figure}[!ht]
+\center
+\includegraphics[width=0.5\textwidth]{images/1_query_mem_ret_no_write.png}
+\caption{Returns over time for 1 query architecture but with write weight fixed to 1 for all time steps. y-axis is return, x-axis is number of training episodes. This is not exactly conclusive but comparing to Figure \ref{fig:1_query_ret} it does appear that using write weight tuning helps to improve the return faster.}
+\label{fig:1_query_no_write}
+\end{figure}
+
+\begin{figure}[!ht]
+\centering
+\begin{subfigure}[t]{.45\textwidth}
+  \centering
+      \includegraphics[width=1\textwidth]{images/5_query_mem_ret.png}
+  \caption{Returns over time for 5 query architecture. y-axis is return, x-axis is number of training episodes.}
+  \label{fig:5_query_ret}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{.45\textwidth}
+  \centering
+      \includegraphics[width=1\textwidth]{images/5_query_mem_writes.png}
+  \caption{Write weight for informant state (blue) and average write weight for all other states (green). y-axis is write weight, x-axis is number of training episodes.}
+  \label{fig:5_query_write}
+\end{subfigure}
+\caption{Results for architecture with 5 queries. Initial improvement in return is more rapid and consistent, however it collapses somewhat later on. Additionally the write weights don't appear to separate at all as they did in the 1 query case. }
+\label{fig:5_query}
+\end{figure}
+
+\begin{figure}[!ht]
+\center
+\includegraphics[width=0.5\textwidth]{images/recurrent_ret.png}
+\caption{Returns over time for recurrent baseline. y-axis is return, x-axis is number of training episodes.}
+\label{fig:recurrent}
+\end{figure}
+
+\section*{Discussion}
 
 \section*{Conclusion}
 
