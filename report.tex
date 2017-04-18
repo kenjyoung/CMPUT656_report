@@ -11,7 +11,7 @@
 \usepackage{txfonts}
 \begin{document}
 \begin{center}
-{\Large \textbf{CMPUT 656: Learning What to Remember}}
+{\Large \textbf{CMPUT 656 Course Project: Learning What to Remember}}
 \end{center}
 \section*{Introduction}
 Most reinforcement learning techniques assume the environment has the Markov property, meaning that the future state is independent of the past states give the present states. Put another way this assumes the agent has all the information it needs to make an optimal decision at each time and therefore has no need to remember the past. This is however not realistic in general, realistic problems often require significant information from the past in order to make an informed decision in the present and there is often no obvious way to incorporate the relevant information into an expanded present state. It is therefore desirable to establish general techniques for learning a compact representation of the relevant details of the past (i.e. a memory, or learned state) in order to facilitate decisions in the present.
@@ -20,9 +20,10 @@ Most modern attempts to tackle this problem make use of variations of recurrent 
 \section*{Problem}
 As a proof of concept for our proposed method we propose a toy problem we call "the secret informant" problem which requires an agent to figure out what information from past states is informative about the correct decision to make in the future. The environment consists of a chain of states each represented by a feature vector. In each state k possible actions are available (we use k=3 throughout), however the action choice only changes the outcome in the final state where 1 of the three actions will yield a reward of $+1$ and the other 2 will yield $0$ reward. Which action will yield the reward is drawn uniformly for each episode of the problem and can be determined for a given episode only by looking at the feature vector of some past state (which we refer to as the informant state) prior to the state in which the choice must be made. The feature vector associated with each state is shown in figure \ref{fig:state}.
 
-The agent starts with no knowledge of the semantic interpretation of the state representation and must learn through successive trials what information is relevant to allow it to select the correct action in the final state. It also does not initially know that reward is only available in the final state and all other actions are irrelevant so this too must be learned. 
+The agent starts with no knowledge of the semantic interpretation of the state representation and must learn through successive trials what information is relevant to allow it to select the correct action in the final state. It also does not initially know that reward is only available in the final state and all other actions are irrelevant so this too must be learned. An instance of the full problem is shown in \ref{fig:problem}.
 \begin{figure}[!ht]
-\includegraphics[width=1\textwidth]{images/state.png}
+\center
+\includegraphics[width=0.5\textwidth]{images/state.png}
 \caption{State representation for our test problem, blue digits are a one hot representation of which action the state is suggesting is correct (i.e. will yield $+1$ reward), the green digit will be 1 if and only if this state actually determines the correct action to take (i.e. it is the informant state). The red digit will be 1 if and only if the blue indicator is random and uncorrelated with the correct action choice (i.e. it is a noisy state). The final digit is simply an always on bias which may aid in the memory mechanism we will describe later. In addition to the general interpretation of these digits there is a special start node with code 000001 and the final node (at which the action choice will give a reward) with code 000011.}
 \label{fig:state}
 \end{figure}
@@ -36,9 +37,41 @@ The agent starts with no knowledge of the semantic interpretation of the state r
 \section*{Related Work}
 
 \section*{Proposed Method}
+The main contribution of this work is to suggest a new kind of memory module designed to be trainable to both read and write using only information local in time (i.e. without requiring something like backpropagation through time). The instantiation of this idea presented here is meant only as a proof of concept with much room for improvement in terms of both theoretical foundation and actual implementation.
+\subsection*{Memory Module}
+The memory module is inspired by (though currently quite different from) the Holographic Reduced Representation used in \cite{LSTM}, and is intended to store and recall vectors of a fixed length $n$. It consists of $m$ complex copies, each of length $n$. Each time a write is performed it is accompanied by a positive weight $r$ (fixed here to be in $[0,1]$) which simply multiplies the item to be stored, along with one uniformly random complex phase $e^{i\theta_k}$ for each copy stored. If we take the memory to be an $(m,n)$ complex matrix $M$ writing a vector $\pmb{s}$ with weight $r$ is done as follows:
+
+$$M_{k,j}\mathrel{+}=re^{i\theta_k}\pmb{s}_j$$
+
+Where here $j$ indexes the elements of the stored vector $\pmb{s}$ and $k$ indexes the $m$ copies stored in the memory. Now consider how we can go about recalling stored items from this memory. If we knew the set of random phases with which the desired item was stored $e^{i\theta_k}$ we can multiply each copy by its complex conjugate $e^{-i\theta_k}$ and take the real part of the result to retrieve an estimate $\tilde{\pmb{s}}_k$ of $\pmb{s}$. Since the phases used for all other stored items are uniformly random they will still be uniformly random when multiplied by $e^{-i\theta_k}$. i.e. for a particular $k$ and $\pmb{s_t}$ where $t$ is the time-step we wish to recover our written value from, we get an estimate that looks like this:
+\begin{align*}
+\tilde{\pmb{s_t}}_{k}&=\Re(e^{-i\theta_{kt}}M_{k,:})\\
+&=\Re(r_t\pmb{s_t}+\sum_{\tau\neq t}e^{i(\theta_{k\tau}-\theta_{kt})}r_\tau\pmb{s_\tau})\\
+&=r_t\pmb{s_t}+\Re(\sum_{\tau\neq t}e^{i(\theta_{k\tau}-\theta_{kt})}r_\tau\pmb{s_\tau})\\
+&=r_t\pmb{s_t}+(\textit{Expectation 0 Noise})
+\end{align*}
+By Averaging the resulting estimates $\tilde{\pmb{s_t}}_{k}$ over all $m$ copies in memory we get a better unbias estimate of $r_t\pmb{s_t}$. In order to get rid of the scaling factor $r_t$ we enforce that all the $\pmb{s_t}$ are normalized before being written to memory, thus we simply normalize the resulting estimate of $r_t\pmb{s_t}$ to obtain an estimate of $\pmb{s_t}$ itself.
+
+The bad news is we do not actually know the complex phases $e^{-i\theta_k}$ for the particular item we are trying to recall. The only information we are storing is the $m$ complex vectors that make up the memory. In the present work we use a particular method for querying the memory and estimating these phases, however the theoretical details have not been fully hashed out. Refining our memory mechanism to have better understood theoretical properties (which hopefully translates into better results and greater applicability) is a task for future work.
+
+The way we handle queries to the memory is a form of content addressable read mechanism. A query to the memory consists of an arbitrary real vector of length $n$ (the same as the length of the stored items). For each copy in the memory we then estimate the phase of the desired read value to be the phase which results in the maximum dot product between the query $\pmb{q}$ and the returned estimate $\tilde{\pmb{s_t}}_{k}$. As we will now show this maximization process is a differentiable operation and can thus be trained by backpropagation directly.
+\begin{align*}
+\theta_k&=\underset{\theta}{argmax}\  \Re(e^{i\theta}\pmb{q}\cdot M_{k,:})\\
+&=\underset{\theta}{argmax}\  \Re(\cos(\theta)\pmb{q}\cdot M_{k,:}+i\sin(\theta)\pmb{q}\cdot M_{k,:})\\
+&=\underset{\theta}{argmax}\  \cos(\theta)\Re(\pmb{q}\cdot M_{k,:})-\sin(\theta)\Im(\pmb{q}\cdot M_{k,:})\\
+&\implies \frac{d}{d\theta}\left(\cos(\theta)\Re(\pmb{q}\cdot M_{k,:})-\sin(\theta)\Im(\pmb{q}\cdot M_{k,:})\right)=0\text{, at }\theta_k\\
+&\implies -\sin(\theta_k)\Re(\pmb{q}\cdot M_{k,:})-\cos(\theta_k)\Im(\pmb{q}\cdot M_{k,:})=0\\
+&\implies \tan(\theta_k)=-\frac{\Im(\pmb{q}\cdot M_{k,:})}{\Re(\pmb{q}\cdot M_{k,:})}\\
+&\implies \theta_k=n\pi-\arctan\left(\frac{\Im(\pmb{q}\cdot M_{k,:})}{\Re(\pmb{q}\cdot M_{k,:})}\right)\text{, for some integer }n
+\end{align*}
+Note that there 
+
+\subsection*{Training Write Network}
+As highlighted above the query portion of our network is fully differentiable and therefore trainable directly by backpropogation. In addition we have a second network whose purpose is to choose the write weight $r$ for the state at each time-step. While in principle the right portion of the network is also differentiable and could also be trained by a variant of backpropogation through time, the purpose of the present work is to design a method which avoids this, thus we instead use an update method which is strictly local in time.
+\subsection*{Architecture}
 \begin{figure}[!ht]
 \includegraphics[width=1\textwidth]{images/architecture.png}
-\caption{Our architecture, }
+\caption{Our architecture, input is given separately to both query and write network. Write network output is sigmoid to give a weight between 0 and 1, this weight multiplies the input vector input along with a random complex phase to give the value that is actually written to memory. The query network output \textbf{q} to memory is identity (i.e. potentially spans the whole space) the memory returns a vector \textbf{u}. The input to the action value network consists of the output of the second last layer of the query network, along with the value \textbf{u} read from memory. The action value network outputs action values for all available actions.  }
 \label{fig:arch}
 \end{figure}
 
