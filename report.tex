@@ -39,7 +39,7 @@ The agent starts with no knowledge of the semantic interpretation of the state r
 \section*{Proposed Method}
 The main contribution of this work is to suggest a new kind of memory module designed to be trainable to both read and write using only information local in time (i.e. without requiring something like backpropagation through time). The instantiation of this idea presented here is meant only as a proof of concept with much room for improvement in terms of both theoretical foundation and actual implementation.
 \subsection*{Memory Module}
-The memory module is inspired by (though currently quite different from) the Holographic Reduced Representation used in \cite{LSTM}, and is intended to store and recall vectors of a fixed length $n$. It consists of $m$ complex copies, each of length $n$. Each time a write is performed it is accompanied by a positive weight $r$ (fixed here to be in $[0,1]$) which simply multiplies the item to be stored, along with one uniformly random complex phase $e^{i\theta_k}$ for each copy stored. If we take the memory to be an $(m,n)$ complex matrix $M$ writing a vector $\pmb{s}$ with weight $r$ is done as follows:
+The memory module is inspired by (though currently quite different from) the Holographic Reduced Representation used in \cite{LSTM}, and is intended to store and recall vectors of a fixed length $n$. It consists of $m$ complex copies, each of length $n$. Each time a write is performed it is accompanied by a positive weight $r$ (fixed here to be in $[0,1]$) which simply multiplies the item to be stored and corresponds to how strongly we wish to remember the current state. Additionally each copy is multiplied by a uniformly random complex phase $e^{i\theta_k}$ chosen separately for each copy stored. If we take the memory to be an $(m,n)$ complex matrix $M$ writing a vector $\pmb{s}$ with weight $r$ is done as follows:
 
 $$M_{k,j}\mathrel{+}=re^{i\theta_k}\pmb{s}_j$$
 
@@ -57,17 +57,22 @@ The bad news is we do not actually know the complex phases $e^{-i\theta_k}$ for 
 The way we handle queries to the memory is a form of content addressable read mechanism. A query to the memory consists of an arbitrary real vector of length $n$ (the same as the length of the stored items). For each copy in the memory we then estimate the phase of the desired read value to be the phase which results in the maximum dot product between the query $\pmb{q}$ and the returned estimate $\tilde{\pmb{s_t}}_{k}$. As we will now show this maximization process is a differentiable operation and can thus be trained by backpropagation directly.
 \begin{align*}
 \theta_k&=\underset{\theta}{argmax}\  \Re(e^{i\theta}\pmb{q}\cdot M_{k,:})\\
-&=\underset{\theta}{argmax}\  \Re(\cos(\theta)\pmb{q}\cdot M_{k,:}+i\sin(\theta)\pmb{q}\cdot M_{k,:})\\
+&=\underset{\theta}{argmax}\  \Re(\cos(\theta)\pmb{q}\cdot M_{k,:}+i\sin(\theta)\pmb{q}\cdot M_{k,:}\\
 &=\underset{\theta}{argmax}\  \cos(\theta)\Re(\pmb{q}\cdot M_{k,:})-\sin(\theta)\Im(\pmb{q}\cdot M_{k,:})\\
 &\implies \frac{d}{d\theta}\left(\cos(\theta)\Re(\pmb{q}\cdot M_{k,:})-\sin(\theta)\Im(\pmb{q}\cdot M_{k,:})\right)=0\text{, at }\theta_k\\
 &\implies -\sin(\theta_k)\Re(\pmb{q}\cdot M_{k,:})-\cos(\theta_k)\Im(\pmb{q}\cdot M_{k,:})=0\\
 &\implies \tan(\theta_k)=-\frac{\Im(\pmb{q}\cdot M_{k,:})}{\Re(\pmb{q}\cdot M_{k,:})}\\
 &\implies \theta_k=n\pi-\arctan\left(\frac{\Im(\pmb{q}\cdot M_{k,:})}{\Re(\pmb{q}\cdot M_{k,:})}\right)\text{, for some integer }n
 \end{align*}
-Note that there 
+Note that angles differing by $2\pi$ are equivalent hence there are really 2 extrema here, one is a minimum and one is a maxima. To figure out which is which we can look at the second derivative. After doing this and performing some simple algebra we find that the maxima we desire is given by:
+$$\theta_k = \begin{cases}
+ -\arctan\left(\frac{\Im(\pmb{q}\cdot M_{k,:})}{\Re(\pmb{q}\cdot M_{k,:})}\right) &\text{if $\Re(\pmb{q}\cdot M_{k,:})\geq0$}\\    \pi-\arctan\left(\frac{\Im(\pmb{q}\cdot M_{k,:})}{\Re(\pmb{q}\cdot M_{k,:})}\right) &\text{if $\Re(\pmb{q}\cdot M_{k,:})<0$}
+\end{cases}
+$$
+We can use this angle to find the estimated $\pmb{s}$ in memory ``closest'' to the query $\pmb{q}$ as described above. Note that since this optimal angle and the subsequent computation of the estimate $\pmb{s}$ described above are both differentiable almost everywhere, we can backpropogate through this to improve our generated queries $\pmb{q}$ in order to make use of our stored memories to achieve our specified task.
 
 \subsection*{Training Write Network}
-As highlighted above the query portion of our network is fully differentiable and therefore trainable directly by backpropogation. In addition we have a second network whose purpose is to choose the write weight $r$ for the state at each time-step. While in principle the right portion of the network is also differentiable and could also be trained by a variant of backpropogation through time, the purpose of the present work is to design a method which avoids this, thus we instead use an update method which is strictly local in time.
+As highlighted above the query portion of our network is fully differentiable and therefore trainable directly by backpropogation. In addition we have a second network whose purpose is to choose the write weight $r$ for the state at each time-step. While in principle the right portion of the network is also differentiable and could also be trained by a variant of backpropogation through time, the purpose of the present work is to design a method which avoids this, thus we instead use an update method which is strictly local in time. Our method attempts to approximate $\frac{d\sigma^2(Q(\pmb{s},a))}{dr(\pmb{q})}$ (i.e. the change in the variance of each action value in the current state over the change in the write weight associated with the current query). Using this estimate we then compute $\frac{d\sigma^2(Q(\pmb{s},a))}{\theta}=\frac{d\sigma^2(Q(\pmb{s},a))}{dr(\pmb{q})}\frac{dr(\pmb{q})}{\theta}$ for each parameter $\theta$ of the write network. This value is then used to perform gradient descent to tune the write network to generate weights which produce low variance in the computed action values.
 \subsection*{Architecture}
 \begin{figure}[!ht]
 \includegraphics[width=1\textwidth]{images/architecture.png}
