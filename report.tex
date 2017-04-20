@@ -11,14 +11,15 @@
 \usepackage{txfonts}
 \begin{document}
 \begin{center}
-{\Large \textbf{CMPUT 656 Course Project: Learning What to Remember}}
+{\Large \textbf{CMPUT 656 Course Project: Learning What to Remember}}\\
+{Kenny Young}
 \end{center}
 \section*{Introduction}
 Most reinforcement learning techniques assume the environment has the Markov property, meaning that the future state is independent of the past states give the present states. Put another way this assumes the agent has all the information it needs to make an optimal decision at each time and therefore has no need to remember the past. This is however not realistic in general, realistic problems often require significant information from the past in order to make an informed decision in the present and there is often no obvious way to incorporate the relevant information into an expanded present state. It is therefore desirable to establish general techniques for learning a compact representation of the relevant details of the past (i.e. a memory, or learned state) in order to facilitate decisions in the present.
-Most modern attempts to tackle this problem make use of variations of recurrent neural networks trained with back-propagation through time. This can work well for many tasks, but generally requires backpropogating many steps into the past which is not practical in an online reinforcement learning setting. In this work we attempt to address the problem of memory without explicit backpropogation through time. To do this we propose a method for learning over time which information should be written to and read from a lossy external memory. If an RNN can be considered a working memory
+Most modern attempts to tackle this problem make use of variations of recurrent neural networks trained with back-propagation through time. This can work well for many tasks, but generally requires backpropogating many steps into the past which is not practical in an online reinforcement learning setting. In this work we attempt to address the problem of memory without explicit backpropogation through time. To do this we propose a method for learning over time which information should be written to and read from a lossy external memory. If an RNN can be considered a working memory the technique presented here is more similar to episodic memory, choosing which complete states to remember and recall in order to perform the present task.
 
 \section*{Problem}
-As a proof of concept for our proposed method we propose a toy problem we call "the secret informant" problem which requires an agent to figure out what information from past states is informative about the correct decision to make in the future. The environment consists of a chain of states each represented by a feature vector. In each state k possible actions are available (we use k=3 throughout), however the action choice only changes the outcome in the final state where 1 of the three actions will yield a reward of $+1$ and the other 2 will yield $0$ reward. Which action will yield the reward is drawn uniformly for each episode of the problem and can be determined for a given episode only by looking at the feature vector of some past state (which we refer to as the informant state) prior to the state in which the choice must be made. The feature vector associated with each state is shown in figure \ref{fig:state}.
+As a proof of concept for our proposed method we propose a toy problem we call ``the secret informant problem'' which requires an agent to figure out what information from past states is informative about the correct decision to make in the future. The environment consists of a chain of states each represented by a feature vector. In each state k possible actions are available (we use k=3 throughout), however the action choice only changes the outcome in the final state where 1 of the three actions will yield a reward of $+1$ and the other 2 will yield $0$ reward. Which action will yield the reward is drawn uniformly for each episode of the problem and can be determined for a given episode only by looking at the feature vector of some past state (which we refer to as the informant state) prior to the state in which the choice must be made. The feature vector associated with each state is shown in figure \ref{fig:state}.
 
 The agent starts with no knowledge of the semantic interpretation of the state representation and must learn through successive trials what information is relevant to allow it to select the correct action in the final state. It also does not initially know that reward is only available in the final state and all other actions are irrelevant so this too must be learned. An instance of the full problem is shown in \ref{fig:problem}.
 \begin{figure}[!ht]
@@ -30,7 +31,7 @@ The agent starts with no knowledge of the semantic interpretation of the state r
 
 \begin{figure}[!ht]
 \includegraphics[width=1\textwidth]{images/problem.png}
-\caption{An instance of the secret informant, the start state is orange, the final state (at which a decision must be made) is dark blue, the informant state (with the 4th bit set to 1) is yellow while the noisy states (with the 4th bit set to 0) are pale blue. Notice that because the 1st bit in the informant state is 1 and the rest are 0 the reward must be given for the top action and no other. In each instance of the problem the informant state will be placed randomly between the start and final state. Here we have 3 noisy states in addition to the informant state, in our tests we use 4 noisy states.}
+\caption{An instance of the secret informant problem, the start state is orange, the final state (at which a decision must be made) is dark blue, the informant state (with the 4th bit set to 1) is yellow while the noisy states (with the 4th bit set to 0) are pale blue. Notice that because the 1st bit in the informant state is 1 and the rest are 0 the reward must be given for the top action and no other. In each instance of the problem the informant state will be placed randomly between the start and final state. Here we have 3 noisy states in addition to the informant state, in our tests we use 9 noisy states.}
 \label{fig:problem}
 \end{figure}
 
@@ -43,14 +44,14 @@ The memory module is inspired by (though currently quite different from) the Hol
 
 $$M_{k,j}\mathrel{+}=re^{i\theta_k}\pmb{s}_j$$
 
-Where here $j$ indexes the elements of the stored vector $\pmb{s}$ and $k$ indexes the $m$ copies stored in the memory. Now consider how we can go about recalling stored items from this memory. If we knew the set of random phases with which the desired item was stored $e^{i\theta_k}$ we can multiply each copy by its complex conjugate $e^{-i\theta_k}$ and take the real part of the result to retrieve an estimate $\tilde{\pmb{s}}_k$ of $\pmb{s}$. Since the phases used for all other stored items are uniformly random they will still be uniformly random when multiplied by $e^{-i\theta_k}$. i.e. for a particular $k$ and $\pmb{s_t}$ where $t$ is the time-step we wish to recover our written value from, we get an estimate that looks like this:
+Where here $j$ indexes the elements of the stored vector $\pmb{s}$ and $k$ indexes the $m$ copies stored in the memory. Now consider how we can go about recalling stored items from this memory. If we knew the set of random phases with which the desired item was stored $e^{i\theta_k}$ we can multiply each copy by its complex conjugate $e^{-i\theta_k}$ and take the real part of the result to retrieve an estimate $\pmb{u_{0k}}$ of $r\pmb{s}$. Since the phases used for all other stored items are uniformly random they will still be uniformly random when multiplied by $e^{-i\theta_k}$. i.e. for a particular $k$ and $\pmb{s_t}$ where $t$ is the time-step we wish to recover our written value from, and $\pmb{s_t}$ is the input state written to memory at that time we get an estimate that looks like this:
 \begin{align*}
-\tilde{\pmb{s_t}}_{k}&=\Re(e^{-i\theta_{kt}}M_{k,:})\\
+\pmb{u_{0k}}&=\Re(e^{-i\theta_{kt}}M_{k,:})\\
 &=\Re(r_t\pmb{s_t}+\sum_{\tau\neq t}e^{i(\theta_{k\tau}-\theta_{kt})}r_\tau\pmb{s_\tau})\\
 &=r_t\pmb{s_t}+\Re(\sum_{\tau\neq t}e^{i(\theta_{k\tau}-\theta_{kt})}r_\tau\pmb{s_\tau})\\
 &=r_t\pmb{s_t}+(\textit{Expectation 0 Noise})
 \end{align*}
-By Averaging the resulting estimates $\tilde{\pmb{s_t}}_{k}$ over all $m$ copies in memory we get a better unbias estimate of $r_t\pmb{s_t}$. In order to get rid of the scaling factor $r_t$ we enforce that all the $\pmb{s_t}$ are normalized before being written to memory, thus we simply normalize the resulting estimate of $r_t\pmb{s_t}$ to obtain an estimate of $\pmb{s_t}$ itself.
+By Averaging the resulting estimates $\pmb{u_{0k}}$ over all $m$ copies in memory we get a better unbias estimate $\pmb{u_0}$ of $r_t\pmb{s_t}$. In order to get rid of the scaling factor $r_t$ we enforce that all the $\pmb{s_t}$ are normalized before being written to memory, thus we simply normalize the resulting estimate of $r_t\pmb{s_t}$ to obtain an estimate $\pmb{u}$ of $\pmb{s_t}$ itself.
 
 The bad news is we do not actually know the complex phases $e^{-i\theta_k}$ for the particular item we are trying to recall. The only information we are storing is the $m$ complex vectors that make up the memory. In the present work we use a particular method for querying the memory and estimating these phases, however the theoretical details have not been fully hashed out. Refining our memory mechanism to have better understood theoretical properties (which hopefully translates into better results and greater applicability) is a task for future work.
 
@@ -69,10 +70,45 @@ $$\theta_k = \begin{cases}
  -\arctan\left(\frac{\Im(\pmb{q}\cdot M_{k,:})}{\Re(\pmb{q}\cdot M_{k,:})}\right) &\text{if $\Re(\pmb{q}\cdot M_{k,:})\geq0$}\\    \pi-\arctan\left(\frac{\Im(\pmb{q}\cdot M_{k,:})}{\Re(\pmb{q}\cdot M_{k,:})}\right) &\text{if $\Re(\pmb{q}\cdot M_{k,:})<0$}
 \end{cases}
 $$
-We can use this angle to find the estimated $\pmb{s}$ in memory ``closest'' to the query $\pmb{q}$ as described above. Note that since this optimal angle and the subsequent computation of the estimate $\pmb{s}$ described above are both differentiable almost everywhere, we can backpropogate through this to improve our generated queries $\pmb{q}$ in order to make use of our stored memories to achieve our specified task.
+We can use this angle to find the estimated $\pmb{s}$ in memory ``closest'' to the query $\pmb{q}$ as described above. Note that since this optimal angle and the subsequent computation of the estimate $\pmb{s}$ described above are both differentiable almost everywhere, we can backpropogate through this to improve our generated queries $\pmb{q}$ in order to make use of our stored memories to achieve our specified task. We refer to the estimated $\pmb{s}$ recovered by this process (i.e. the value retrieved from memory in response to query $\pmb{q}$) as $\pmb{u}$.
 
 \subsection*{Training Write Network}
-As highlighted above the query portion of our network is fully differentiable and therefore trainable directly by backpropogation. In addition we have a second network whose purpose is to choose the write weight $r$ for the state at each time-step. While in principle the right portion of the network is also differentiable and could also be trained by a variant of backpropogation through time, the purpose of the present work is to design a method which avoids this, thus we instead use an update method which is strictly local in time. Our method attempts to approximate $\frac{d\sigma^2(Q(\pmb{s},a))}{dr(\pmb{q})}$ (i.e. the change in the variance of each action value in the current state over the change in the write weight associated with the current query). Using this estimate we then compute $\frac{d\sigma^2(Q(\pmb{s},a))}{\theta}=\frac{d\sigma^2(Q(\pmb{s},a))}{dr(\pmb{q})}\frac{dr(\pmb{q})}{\theta}$ for each parameter $\theta$ of the write network. This value is then used to perform gradient descent to tune the write network to generate weights which produce low variance in the computed action values.
+As highlighted above the query portion of our network is fully differentiable and therefore trainable directly by backpropogation. In addition we have a second network whose purpose is to choose the write weight $r$ for the state at each time-step. While in principle the write portion of the network is also differentiable and could also be trained by a variant of backpropogation through time, the purpose of the present work is to design a method which avoids this, thus we instead use an update method which is strictly local in time. Our method attempts to approximate $\frac{d\sigma^2(Q(\pmb{s},a))}{dr(\pmb{u})}$ (i.e. the change in the variance of each action value in the current state over the change in the write weight associated with the current query). Using this estimate we then compute $\frac{d\sigma^2(Q(\pmb{s},a))}{\theta_{write}}=\frac{d\sigma^2(Q(\pmb{s},a))}{dr(\pmb{s})}\frac{dr(\pmb{u})}{\theta_{write}}$ for each parameter $\theta_{write}$ of the write network. This value is then used to perform gradient descent to tune the write network to generate weights which produce low average variance in the computed action values over all actions.
+
+To approximate $\frac{d\sigma^2(Q(\pmb{s},a))}{dr(\pmb{u})}$ we first assume $\sigma^2(Q(\pmb{s},a)) = \left(\frac{dQ(\pmb{s},a)}{d\pmb{u}}\right)^2\sigma^2(\pmb{u})$, which is an assumption commonly employed to perform propagation of experimental errors in the physical sciences. Differentiating with respect to $r$ then gives us: 
+$$\frac{d\sigma^2(Q(\pmb{s},a))}{dr} = \left(\frac{dQ(\pmb{s},a)}{d\pmb{u}}\right)^2\frac{d\sigma^2(\pmb{u})}{dr(\pmb{q})}$$
+$\frac{dQ(\pmb{s},a)}{d\pmb{u}}$ is easily computed by ordinary backpropogation, but it remains to estimate $\frac{d\sigma^2(\pmb{u})}{dr(\pmb{q})}$. Since $\pmb{u}$ is generated from $m$ independent estimates, we can approximate $\sigma^2(\pmb{u})$ as the standard error in the mean computed from these $m$ samples. Approximating its derivative with respect to $r(\pmb{q})$ requires a bit more creativity. To do this we take $\pmb{u}$ to be the ``true'' value and take the difference of the estimates directed from individual samples from this value to be added noise terms $\pmb{\mathcal{N}_k}$ defined as follows:
+\begin{align*}
+\pmb{u_0}&=\frac{1}{m}\sum_{k=1}^m\pmb{u_{0k}}\\
+\bar{r}&=|\pmb{u_0}|_2\\
+\pmb{u}&=\frac{\pmb{u_0}}{\bar{r}}\\
+\pmb{u_k} &= \frac{\pmb{u_{0k}}}{\bar{r}}\\
+\pmb{\mathcal{N}_k}&=\pmb{u_{0k}}-\pmb{u_0}\\
+\implies\pmb{u_{0k}}&=\pmb{u_0}+\pmb{\mathcal{N}_k}
+\end{align*}
+We then make the assumption that $\pmb{u}$ does in fact correspond to an actual value $\pmb{s}$ which was written to the memory, plus some additive noise with some $r=\bar{r}$ which can be estimated as the magnitude of $\pmb{u_0}$ ($\pmb{u}$ prior to normalizing). Given this we can reasonably assume that the modifying $r(\pmb{u})$ to a value other than $\bar{r}$ will change the magnitude of $\pmb{u_o}$ while holding the added noise terms $\pmb{\mathcal{N}_k}$ constant. Hence letting $\pmb{u_o}(r)$ be the scaled value of $\pmb{u_o}$ at a new $r$ value, we arrive at the following expression for $\pmb{u_k}(r)$ (the $k_{th}$ sampled estimate of $\pmb{u}$).
+\begin{align*}
+\pmb{u_0}(r) &= \frac{\pmb{u_0}r}{\bar{r}}\\
+\pmb{u_{ok}}(r) &= \pmb{u_0}(r)+\pmb{\mathcal{N}_k}\\
+&=\frac{\pmb{u_0}r}{\bar{r}}+\pmb{\mathcal{N}_k}\\
+\pmb{u_k}(r) &= \frac{\pmb{u_{ok}}(r)}{r}\\
+&= \frac{\pmb{u_0}}{\bar{r}}+\frac{\pmb{\mathcal{N}_k}}{r}\\
+&=\pmb{u}+\frac{\pmb{\mathcal{N}_k}}{r}
+\end{align*}
+So the final result is just that the difference in each sampled estimate from the mean is divided by $r$ instead of $\bar{r}$. From this we can compute an estimate of $\sigma^2(\pmb{u}(r))$ as a function of r as follows:
+\begin{align*}
+\sigma^2(\pmb{u}(r))&=\frac{1}{m}\sum_{k=1}^m(\pmb{u}-\pmb{u}_k(r))^2\\
+&=\frac{1}{m}\sum_{k=1}^m\left(\frac{\pmb{\mathcal{N}_k}}{r}\right)^2
+\end{align*}
+And finally we can differentiate this approximation with respect to $r$ to yield:
+$$\left.\frac{d\sigma^2(\pmb{u})}{dr}\right\rvert_{\bar{r}}=-\frac{2}{m}\sum_{k=1}^m\frac{\pmb{\mathcal{N}_k}^2}{\bar{r}}$$
+At this point we now have all the ingredients to estimate $\frac{d\sigma^2(Q(\pmb{s},a))}{\theta_{write}}$ for a particular read value $\pmb{u}$ at a particular time-step. Not however that there is a hidden tradeoff, because the nature of the memory is that each written item interfere with all others. Hence if we increase the write weight assigned to one particular input state $\pmb{s}$ it will also increase the noise terms associated with all other written values. Applying the above approximate gradients naively will lead to all write weights gradually increasing (though at differing rates), which is not acceptable. To counter this, for now, we simply maintain an exponential moving average of $\frac{d\sigma^2(Q(\pmb{s},a))}{dr}$ and subtract this from the value at each time-step before performing the gradient descent update. This means that the write weight associated with the current read value $\pmb{u}$ will be increased only if it's associated $\frac{d\sigma^2(Q(\pmb{s},a))}{dr(\pmb{u})}$ surpasses the current moving average and will be decreased otherwise. To summarize we use:
+\begin{align*}
+\text{Effective Gradient}&=\left(\left(\frac{dQ(\pmb{s_t},a)}{d\pmb{u_t}}\right)^2\frac{d\sigma^2(\pmb{u_t})}{dr(\pmb{u_t})}-S_t\right)\frac{dr(\pmb{u_t})}{\theta_{write}}\\
+S_{t+1} &=\alpha\left(\left(\frac{dQ(\pmb{s_t},a)}{d\pmb{u_t}}\right)^2\frac{d\sigma^2(\pmb{u_t})}{dr(\pmb{u_t})}\right)+(1-\alpha)S_t
+\end{align*}
+Where each term is approximated as discussed above, and we insert this ``effective gradient'' as the gradient for some gradient descent optimizer acting on all $\theta_{write}$ parameters of the write network at each time-step. In our experiments we use $\alpha=0.5$ in the moving average.
+
 \subsection*{Architecture}
 \begin{figure}[!ht]
 \includegraphics[width=1\textwidth]{images/architecture.png}
@@ -107,24 +143,6 @@ As highlighted above the query portion of our network is fully differentiable an
 \end{figure}
 
 \begin{figure}[!ht]
-\centering
-\begin{subfigure}[t]{.45\textwidth}
-  \centering
-      \includegraphics[width=1\textwidth]{images/5_query_mem_ret.png}
-  \caption{Returns over time for 5 query architecture. y-axis is return, x-axis is number of training episodes.}
-  \label{fig:5_query_ret}
-\end{subfigure}\hfill
-\begin{subfigure}[t]{.45\textwidth}
-  \centering
-      \includegraphics[width=1\textwidth]{images/5_query_mem_writes.png}
-  \caption{Write weight for informant state (blue) and average write weight for all other states (green). y-axis is write weight, x-axis is number of training episodes.}
-  \label{fig:5_query_write}
-\end{subfigure}
-\caption{Results for architecture with 5 queries. Initial improvement in return is more rapid and consistent, however it collapses somewhat later on. Additionally the write weights don't appear to separate at all as they did in the 1 query case. }
-\label{fig:5_query}
-\end{figure}
-
-\begin{figure}[!ht]
 \center
 \includegraphics[width=0.5\textwidth]{images/recurrent_ret.png}
 \caption{Returns over time for recurrent baseline. y-axis is return, x-axis is number of training episodes.}
@@ -150,6 +168,9 @@ Danihelka, I., Wayne, G., Uria, B., Kalchbrenner, N., and Graves, A. (2016) Asso
 
 \bibitem{DNC}
 Graves, A. et al. (2016) Hybrid Computing Using a Neural Network with Dynamic External Memory. Nature 538, 471-476.
+
+\bibitem{RARE}
+Kaiser, Lukasz, et al. "Learning to remember rare events." arXiv preprint arXiv:1703.03129 (2017).
 \end{thebibliography}
 
 
