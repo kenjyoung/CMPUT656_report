@@ -110,6 +110,16 @@ S_{t+1} &=\alpha\left(\left(\frac{dQ(\pmb{s_t},a)}{d\pmb{u_t}}\right)^2\frac{d\s
 Where each term is approximated as discussed above, and we insert this ``effective gradient'' as the gradient for some gradient descent optimizer acting on all $\theta_{write}$ parameters of the write network at each time-step. In our experiments we use $\alpha=0.5$ in the moving average.
 
 \subsection*{Architecture}
+Our architecture for interacting with the memory an generating action values is shown in Figure \ref{fig:arch}. It consists of 4 major parts. Except where otherwise specified all activations are rectified linear.
+
+First is the query network which takes the state itself as input and consists of 2 relu layers followed by an identity layer which generates the query which is sent to the memory. Additionally the $2_{nd}$ layer of the query network is passed forward so that information about the current state is available for computing action values. 
+
+Second we have the memory itself which works as described above receiving queries $\pmb{q}$ from the query network and writes $\pmb{v_k}=re^{i\theta_k}\pmb{s}$, and sending responses $\pmb{u}$ to the action value network.
+
+Third is the action value network itself which takes the memory responses along with information about the current state from the $2_{nd}$ layer of the query network and generates estimated values for each of the 3 actions. The action values in this case are bounded between 0 and 1 (in fact the true action values are either 0 or 1), hence the output of the action value network uses a sigmoid activation. The action value network is trained using deep Q-learning and propagates gradients directly through the memory to improve the $\pmb{q}$ values produced, as well as along the path directly to the input without passing through the memory.
+
+Last we have the write network which is trained entirely separately from the others and outputs a single sigmoid activation $r$. This $r$ is multiplied by the normalized input along with a separately drawn uniformly random complex phase for each copy stored in the memory. The training process for the write network is described in detail in the memory section above.
+
 \begin{figure}[!ht]
 \includegraphics[width=1\textwidth]{images/architecture.png}
 \caption{Our architecture, input is given separately to both query and write network. Write network output is sigmoid to give a weight between 0 and 1, this weight multiplies the input vector input along with a random complex phase to give the value that is actually written to memory. The query network output \textbf{q} to memory is identity (i.e. potentially spans the whole space) the memory returns a vector \textbf{u}. The input to the action value network consists of the output of the second last layer of the query network, along with the value \textbf{u} read from memory. The action value network outputs action values for all available actions.  }
@@ -117,6 +127,11 @@ Where each term is approximated as discussed above, and we insert this ``effecti
 \end{figure}
 
 \section*{Results}
+We run experiments on the secret informant problem (see Figure \ref{fig:problem}) with 4 noisy states and run for 50,000 episodes. Each layer of our model uses 15 units. We use Nesterov Momentum as our optimizer for both the write and action evaluation portions of the network as it was found to be reasonably stable compared to some other options tried. Learning rates were tuned by hand to achieve reasonable performance, it was found that in general training the write network with around $1/10_{th}$ the learning rate of the action evaluation network worked well. We use a memory with just 3 copies in our experiments. Results for 50 repetitions of this experiment, including the output of the write network in the informant state v.s. the average over all other states, are shown in Figure \ref{fig:1_query_mem_ret}.
+
+In addition to this main model we test two baselines. First to test the efficacy of the write network we run the model with $r$ fixed to 1 and the write network disabled. Second we run a model with essentially the same architecture as our action evaluation network but with the memory replaced by a GRU with 5 recurrent units trained using standard backpropogation through time. This last model is meant to give an idea of how difficult the task is for a traditional recurrent architecture but as it hasn't been all that thoroughly tuned it is not a very rigorous baseline. It should also be noted that our goal in this work was to avoid the need to perform backpropogation through time explicitly so any comparison there is not really fair.
+
+We also experimented with variants of our architecture which allowed for multiple queries on each time step which appeared in initial tests to speed up early learning somewhat, however it has so far been prone to instability so results are not included here. This would be more useful in cases where it is actually necessary to query the values of two distinct past states to make a decision in the current state.
 \begin{figure}[!ht]
 \centering
 \begin{subfigure}[t]{.45\textwidth}
