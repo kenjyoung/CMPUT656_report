@@ -13,7 +13,7 @@
 \begin{center}
 {\Large \textbf{CMPUT 656 Course Project: Learning What to Remember}}\\
 {Author: Kenny Young}\\
-{Course Professor:  Dale Schuurmans}\\
+{Course Instructor:  Dale Schuurmans}\\
 \end{center}
 \section*{Introduction}
 Most reinforcement learning techniques assume the environment has the Markov property, meaning that the future state is independent of the past states given the present state. Put another way this assumes the agent has all the information it needs to make an optimal decision at each time and therefore has no need to remember the past. This is however not realistic in general, realistic problems often require significant information from the past in order to make an informed decision in the present and there is often no obvious way to incorporate the relevant information into an expanded present state. It is therefore desirable to establish general techniques for learning a compact representation of the relevant details of the past (i.e. a memory, or learned state) in order to facilitate decision making in the present.
@@ -37,11 +37,18 @@ The agent starts with no knowledge of the semantic interpretation of the state r
 \end{figure}
 
 \section*{Related Work}
+Deep learning systems which make use of an external memory have received a lot of interest lately. One somewhat prototypical example is found in \cite{NTM} and the more recent followup \cite{DNC} . These systems use an LSTM controller attached to read and write heads of a fully differentiable external memory and train the combined system to perform algorithmic tasks. They use an addressing system based on a combination of content addressable, local iteration and random access in order to maneuver both the read and write heads through an arbitrary sized memory using output from the LSTM controller.
+
+More directly related to this work is the application of reinforcement learning to a non-markov task implemented in \cite{MC}. They experiment with architectures using a combination of key-value memory and recurrent networks. In this case the key-value memory saved keys and values corresponding to the last $M$ observations for some integer $M$ thus it was inherently limited in temporal extent but did not require any mechanism for information triage. They test on several reinforcement learning problems including one which is essentially a more complex version of the problem investigated in the present work. This problem consisted of a hallway with a coloured square at the start and two possible exits at the end. Depending on the colour of the square the agent will be rewarded for picking one exit or the other at the end, thus it must remember the colour of the square and recall it as needed to complete the task.
+
+Our memory mechanism is inspired by the Holographic Reduced Representation used in \cite{LSTM}. They make use of the interference properties of complex numbers to write an arbitrary number of key-value pairs into a fixed size memory such that each added item contributes noise to the recalled value for a given key. This memory mechanism is then operated on by an LSTM and the combined system trained to achieve a variety of tasks.
+
+The memory mechanism used in \cite{RARE} is somewhat similar to ours in that they a non-differentiable memory addressing and train it using a training process separate from but coupled with the main network. In this case their memory is based on key value pairs where the keys are queries from the network and the values are class labels. The main network is trained by backpropagation and uses the memory output for classification, but the memory uses a nearest neighbour mechanism and is trained by adding new queries to the memory with appropriate values and subsequently averaging them with other incoming queries with the same values.
 
 \section*{Proposed Method}
 The main contribution of this work is to suggest a new kind of memory module designed to be trainable to both read and write using only information local in time (i.e. without requiring something like backpropagation through time). The instantiation of this idea presented here is meant only as a proof of concept with much room for improvement in terms of both theoretical foundation and actual implementation.
 \subsection*{Memory Module}
-The memory module is inspired by (though currently quite different from) the Holographic Reduced Representation used in \cite{LSTM}, and is intended to store and recall vectors of a fixed length $n$. It consists of $m$ complex copies, each of length $n$. Each time a write is performed it is accompanied by a positive weight $r$ (fixed here to be in $[0,1]$) which simply multiplies the item to be stored and corresponds to how strongly we wish to remember the current state. Additionally each copy is multiplied by a uniformly random complex phase $e^{i\theta_k}$ chosen separately for each copy stored. If we take the memory to be an $(m,n)$ complex matrix $M$ writing a vector $\pmb{s}$ with weight $r$ is done as follows:
+As mentioned in the above section, our memory module is inspired by (though currently quite different from) the Holographic Reduced Representation used in \cite{LSTM}, and is intended to store and recall vectors of a fixed length $n$. It consists of $m$ complex copies, each of length $n$. Each time a write is performed it is accompanied by a positive weight $r$ (fixed here to be in $[0,1]$) which simply multiplies the item to be stored and corresponds to how strongly we wish to remember the current state. Additionally each copy is multiplied by a uniformly random complex phase $e^{i\theta_k}$ chosen separately for each copy stored. If we take the memory to be an $(m,n)$ complex matrix $M$ writing a vector $\pmb{s}$ with weight $r$ is done as follows:
 
 $$M_{k,j}\mathrel{+}=re^{i\theta_k}\pmb{s}_j$$
 
@@ -134,7 +141,7 @@ In addition to this main model we test two baselines. First to test the efficacy
 
 We also experimented with variants of our architecture which allowed for multiple queries on each time step which appeared in initial tests to speed up early learning somewhat, however it has so far been prone to instability so results are not included here. This would be more useful in cases where it is actually necessary to query the values of two distinct past states to make a decision in the current state.
 
-In all cases the action values are learned with Q-learning with an epsilon greedy behaviour policy., with $\epsilon=0.1$ returns are computed during learning under the same epsilon greedy policy, hence the maximum possible expected return is $0.9\bar{3}$.
+In all cases the action values are learned with Q-learning with an epsilon greedy behaviour policy., with $\epsilon=0.1$ returns are computed during learning under the same epsilon greedy policy, hence the maximum possible expected return is $0.9\bar{3}$. We use a very simplified form of deep Q-learning with no experience replay or other frills for our experiments.
 \begin{figure}[!ht]
 \centering
 \begin{subfigure}[t]{.45\textwidth}
@@ -152,7 +159,7 @@ In all cases the action values are learned with Q-learning with an epsilon greed
 \begin{subfigure}[t]{.45\textwidth}
 \centering
       \includegraphics[width=1\textwidth]{images/queries.png}
-  \caption{Average query weight assigned to $4_{th}$ bit which indicates the informant state (cyan) and $5_{th}$ bit (orange) which indicates a noisy state multiplied by the corresponding sign of the $6_{th}$ bit (the always on bias). Multiplication by the sign of the bias is done because there is an inherent symmetry between positive and negative queries which this adjustment breaks.}
+  \caption{Average query element assigned to $4_{th}$ bit which indicates the informant state (cyan) and $5_{th}$ bit (orange) which indicates a noisy state. Each query weight is multiplied by the corresponding sign of the $6_{th}$ bit (the always on bias). Multiplication by the sign of the bias is done because there is an inherent symmetry between positive and negative queries which this adjustment breaks.}
 \label{fig:1_query_queries}
 \end{subfigure}
 \caption{Results for memory based architecture. In each case displayed results are averaged over 45 runs (this would have been 50 but 5 runs terminated early due to occurrence of nan values) with the width of the curve indicating standard error in the mean.}
@@ -167,7 +174,9 @@ In all cases the action values are learned with Q-learning with an epsilon greed
 \end{figure}
 
 \section*{Discussion}
-The results are mixed in terms of demonstrating the feasibility of our suggested memory system and write weight training. While Figure \ref{fig:1_query_write} suggests (though weakly) that our write weight training mechanism is able to learn to separate informative from uninformative states, we can see in Figure \ref{fig:comparison} that our write weight tuning nevertheless hurts performance compared to simply fixing all write weights at 1. The reason for this is likely that although on average we learn to write useful states more strongly the variance over runs is extremely high and occasionally the useful states do end up being written significantly less strongly. What is likely happening is that the performance cost of these occasional failures is high enough compared to the gain from the more frequent successes that average performance is hindered. 
+The results are mixed in terms of demonstrating the feasibility of our suggested memory system and write weight training. While Figure \ref{fig:1_query_write} suggests (though weakly) that our write weight training mechanism is able to learn to separate informative from uninformative states, we can see in Figure \ref{fig:comparison} that our write weight tuning nevertheless hurts performance compared to simply fixing all write weights at 1. The reason for this is likely that although on average we learn to write useful states more strongly the variance over runs is extremely high and occasionally the useful states do end up being written significantly less strongly. What is likely happening is that the performance cost of these occasional failures is high enough compared to the gain from the more frequent successes that average performance is hindered.
+
+Despite that underwhelming result for training write weights we do clearly see that our system is able to learn to query the memory to achieve the given task and achieve reasonably good return values, though perhaps this is not surprising as this part of the task amounts mostly to just learning to query the correct bit. We also see in Figure \ref{fig:1_query_queries} that this does appear to be essentially what the system is doing as it is able to learn a positive weight for the bit indicating relevance and negative weight for the one indicating irrelevance.
 
 Our system also seems to lose out somewhat to a more standard recurrent architecture, however this in itself is not too meaningful as our purpose here is to explore memory mechanisms which avoid the need to perform explicit backpropagation through time which is exactly what is done by the recurrent model tested.
 
@@ -183,11 +192,13 @@ Thus despite the failure of the tuned write weights to aid in performance we are
 We investigate the integration of a new memory mechanism designed to be incorporate learned reads and writes without backpropagation through time. To test this we suggest a toy problem we call "the secret informant" problem, designed to require a system to learn to recall past state information to inform present decisions. This problem itself could provide an interesting test case for a variety of other systems designed to incorporate memory in a reinforcement learning context. We show clearly that our system is capable of learning to read from the memory to achieve the task. The results for learning to write to the memory were less clear but nonetheless encouraging. More theoretical work is needed to allow the present system to match our original ambition, as well as testing on a wider variety of problems to gain a better understanding of the range applicability.
 
 \section*{Limitations and Future Work}
-This work is intended primarily as a proof of concept for systems the operate on some form of variable fidelity memory mechanism and learn write weights based on how the read values impact a systems ability to consistently achieve some primary task. As such there are likely numerous theoretical and practical improvements that could be made, as well as far more empirical testing that should be done. 
+This work is intended primarily as a proof of concept for systems that operate on some form of variable fidelity memory mechanism and learn write weights based on how the read values impact a systems ability to consistently achieve some primary task. As such there are likely numerous theoretical and practical improvements that could be made, as well as far more empirical testing that should be done. 
 
 First of all the memory mechanism itself is far from perfect. Significant improvement could likely be derived from more thorough theoretical investigation of such mechanisms and more precise formulation of exactly what properties we would like the memory to display. Under the current mechanism it is not clear at all how we should interpret the read value when the query made has a nonzero dot-product with multiple previously written values which is something we hope to improve on through more investigation.
 
 The write weight tuning is also far from perfect, as discussed above we do not believe that our current method of accounting for the effect of other written states on the fidelity of the current memory being read is at all sufficient. One way we believe this could be improved is to somehow account for each state visitation and reduce write weights specifically for those states that are visited but never prove to be useful later on. Aside from this our derivation of the gradients involved in the write weight tuning involved a number of assumptions, whose validity could be rightly questioned, which should be further investigated.
+
+Another issue with the present system is that the variance of recalled memories will grow without bound as more and more items are written because there is presently no way to remove information from the memory. It should be possible to add some mechanism intelligently delete memories that are no longer needed in order to free up space.
 
 Further down the line we would like to be able to learn a state representation to write to memory, instead of writing the input state to memory directly. This is complicated by the fact that our aim is to avoid explicit backpropagation through time which would provide the most direct way to do this. A variation of the synthetic gradient method used in \cite{SYNTH} may be one route toward this.
 
@@ -212,6 +223,9 @@ Kaiser, Lukasz, et al. (2017) Learning to remember rare events. arXiv preprint a
 
 \bibitem{SYNTH}
 Jaderberg, Max, et al. (2016) Decoupled neural interfaces using synthetic gradients. arXiv preprint arXiv:1608.05343.
+
+\bibitem{DQN}
+Mnih, Volodymyr, et al. (2015) Human-level control through deep reinforcement learning. Nature 518.7540: 529-533.
 \end{thebibliography}
 
 
